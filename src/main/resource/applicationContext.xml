@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xmlns:aop="http://www.springframework.org/schema/aop" xmlns:tx="http://www.springframework.org/schema/tx"
+       xmlns:mvc="http://www.springframework.org/schema/mvc"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+       http://www.springframework.org/schema/beans/spring-beans.xsd
+       http://www.springframework.org/schema/context
+       http://www.springframework.org/schema/context/spring-context.xsd
+       http://www.springframework.org/schema/aop
+       http://www.springframework.org/schema/aop/spring-aop.xsd
+       http://www.springframework.org/schema/tx
+       http://www.springframework.org/schema/tx/spring-tx.xsd
+       http://www.springframework.org/schema/mvc
+       http://www.springframework.org/schema/mvc/spring-mvc.xsd">
+    <mvc:annotation-driven/>
+    <aop:aspectj-autoproxy proxy-target-class="true"/>
+    <context:component-scan base-package="com.fire.*">
+        <context:exclude-filter type="annotation" expression="org.springframework.stereotype.Controller"/>
+    </context:component-scan>
+
+    <context:property-placeholder location="classpath:jdbc.properties"/>
+    <bean id="mysqlDataSource" class="com.mchange.v2.c3p0.ComboPooledDataSource">
+        <property name="driverClass" value="${jdbc.driver}"/>
+        <property name="jdbcUrl" value="${jdbc.url}"/>
+        <property name="user" value="${jdbc.username}"/>
+        <property name="password" value="${jdbc.password}"/>
+
+    </bean>
+    <bean id="orcalDataSource" class="com.mchange.v2.c3p0.ComboPooledDataSource">
+        <property name="driverClass" value="${jdbc.oracle.driverClass}"/>
+        <property name="jdbcUrl" value="${jdbc.oracle.jdbcUrl}"/>
+        <property name="user" value="${jdbc.oracle.user_name}"/>
+        <property name="password" value="${jdbc.oracle.password}"/>
+    </bean>
+    <bean id="dateSourceUtils" class="com.fire.util.DateSourceUtils">
+
+        <property name="defaultTargetDataSource" ref="mysqlDataSource"/>
+        <property name="targetDataSources">
+            <map>
+                <entry key="mysql" value-ref="mysqlDataSource"/>
+                <entry key="oracle" value-ref="orcalDataSource"/>
+            </map>
+        </property>
+    </bean>
+
+    <bean class="org.mybatis.spring.SqlSessionFactoryBean" id="sqlSessionFactory">
+        <property name="dataSource" ref="dateSourceUtils"/>
+        <property name="configLocation" value="classpath:mybatis-config.xml"/>
+        <property name="mapperLocations" value="classpath:mapper/*.xml"/>
+    </bean>
+    <!--数据源统一管理,并且为每一个数据源命名-->
+    <!--mapper接口-->
+    <bean class="org.mybatis.spring.mapper.MapperScannerConfigurer">
+        <property name="basePackage" value="com.fire.dao"/>
+    </bean>
+    <!--开启文件上传-->
+    <bean id="multipartResolver"
+          class="org.springframework.web.multipart.commons.CommonsMultipartResolver">
+        <property name="maxUploadSize" value="10240000000"/>
+        <property name="maxInMemorySize" value="40960"/>
+        <property name="defaultEncoding" value="UTF-8"/>
+    </bean>
+    <!--邮件发送配置-->
+    <!--发送邮件-->
+    <bean id="mailSender" class="org.springframework.mail.javamail.JavaMailSenderImpl">
+        <property name="host" value="smtp.qq.com"/>
+        <property name="protocol" value="smtp"/>
+        <property name="port" value="587"/>
+        <property name="username" value="782131052@qq.com"/>
+        <property name="password" value="trwzjrvyoyiqbffj"/>
+        <property name="defaultEncoding" value="UTF-8"/>
+        <property name="javaMailProperties">
+            <props>
+                <prop key="mail.smtp.auth">true</prop>
+                <prop key="mail.smtp.timeout">25000</prop>
+            </props>
+        </property>
+    </bean>
+
+    <!--&lt;!&ndash;全局异常处理&ndash;&gt;-->
+    <!--<bean class="org.springframework.web.servlet.handler.SimpleMappingExceptionResolver">-->
+    <!--<property name="exceptionMappings">-->
+    <!--<props>&lt;!&ndash;<prop key="java.lang.Exception"></prop>&ndash;&gt;-->
+    <!--<prop key="com.fly.auth.exception.NoPermissionException">redirect:http://127.0.0.1:8020/HelloHBuilder/cxser/error.html</prop>-->
+    <!--<prop key="com.fly.auth.exception.NOLoginException">redirect:http://127.0.0.1:8020/HelloHBuilder/cxser/login.html</prop>-->
+    <!--</props>-->
+    <!--</property>-->
+    <!--</bean>-->
+
+    <!--mysql事务管理-->
+    <bean id="mySql_transactionManager" class="org.springframework.jdbc.datasource.DataSourceTransactionManager">
+        <property name="dataSource" ref="mysqlDataSource"/>
+    </bean>
+
+    <!--oracle事务管理-->
+    <bean id="oracle_transactionManager" class="org.springframework.jdbc.datasource.DataSourceTransactionManager">
+        <property name="dataSource" ref="orcalDataSource"/>
+    </bean>
+
+    <aop:config>
+        <aop:pointcut id="mysql_txPoint" expression="execution(* com.fire.service.mysql..*(..))"/>
+        <aop:advisor advice-ref="mysql_txAdvice" pointcut-ref="mysql_txPoint" order="30"/>
+    </aop:config>
+
+    <aop:config>
+        <aop:pointcut id="oracle_txPoint" expression="execution(* com.fire.service.oracle..*(..))"/>
+        <aop:advisor advice-ref="oracle_txAdvice" pointcut-ref="oracle_txPoint" order="30"/>
+    </aop:config>
+
+    <tx:advice id="oracle_txAdvice" transaction-manager="oracle_transactionManager">
+        <tx:attributes>
+            <tx:method name="*"/>
+            <tx:method name="get*" read-only="true"/>
+            <tx:method name="select*" read-only="true"/>
+            <tx:method name="query*" read-only="true"/>
+            <tx:method name="delete*" propagation="REQUIRED"/>
+        </tx:attributes>
+    </tx:advice>
+
+
+    <tx:advice id="mysql_txAdvice" transaction-manager="mySql_transactionManager">
+        <tx:attributes>
+            <tx:method name="*"/>
+            <tx:method name="get*" read-only="true"/>
+            <tx:method name="select*" read-only="true"/>
+            <tx:method name="query*" read-only="true"/>
+            <tx:method name="delete*" propagation="REQUIRED"/>
+        </tx:attributes>
+    </tx:advice>
+
+
+</beans>
